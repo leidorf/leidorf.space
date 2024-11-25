@@ -9,7 +9,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #0f0f0f;
     --foreground: #ededed;
   }
 }
@@ -18,4 +18,17 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.header-item{
+  @apply mr-4 text-zinc-300 hover:underline underline-offset-4 decoration-wavy decoration-red-800 decoration-2 tracking-normal hover:tracking-wider transition-all duration-300 ease-in-out;
+
+}
+
+.footer-item{
+  @apply mr-4 text-zinc-600 hover:text-zinc-300 transition-colors duration-300 ease-in-out;
+}
+
+.red-underline{
+  @apply underline decoration-2 decoration-red-600 underline-offset-4
 }
