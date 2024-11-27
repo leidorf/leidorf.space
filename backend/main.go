@@ -30,8 +30,9 @@ type User struct {
 type Post struct {
 	Id          int       `json:"id"`
 	Title       string    `json:"title"`
-	ContentType string    `json:"content_type"`
 	AuthorName  string    `json:"author_name"`
+	ContentType string    `json:"content_type"`
+	Category    string    `json:"category"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	IsPublished bool      `json:"is_published"`
@@ -60,9 +61,10 @@ func main() {
 		);
 		CREATE TABLE IF NOT EXISTS posts (
 			id SERIAL PRIMARY KEY, 
-			content_type VARCHAR(50) NOT NULL,
 			title VARCHAR(255) NOT NULL, 
 			author_name VARCHAR(255) NOT NULL, 
+			content_type VARCHAR(50) NOT NULL,
+			category VARCHAR(50) NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			is_published BOOLEAN DEFAULT FALSE
@@ -86,17 +88,18 @@ func main() {
 
 	// create router
 	router := mux.NewRouter()
-	router.HandleFunc("/api/users/{id}", getUser(db)).Methods("GET").Handler(authMiddleware(getUser(db)))
-	router.HandleFunc("/api/users/{id}", updateUser(db)).Methods("PUT").Handler(authMiddleware(updateUser(db)))
-	router.HandleFunc("/api/admin/login", adminLogin(db)).Methods("POST").Handler(authMiddleware(adminLogin(db)))
+	router.HandleFunc("/api/users/{id}", getUser(db)).Methods("GET")
+	router.HandleFunc("/api/users/{id}", updateUser(db)).Methods("PUT")
+	router.HandleFunc("/api/admin/login", adminLogin(db)).Methods("POST")
 
-	router.HandleFunc("/api/posts", createPost(db)).Methods("POST").Handler(authMiddleware(createPost(db)))
-	router.HandleFunc("/api/posts/{id}", updatePost(db)).Methods("PUT").Handler(authMiddleware(updatePost(db)))
-	router.HandleFunc("/api/posts/{id}", deletePost(db)).Methods("DELETE").Handler(authMiddleware(deletePost(db)))
-	router.HandleFunc("/api/post/{id}", publishPost(db)).Methods("PUT").Handler(authMiddleware(publishPost(db)))
-	
+	router.HandleFunc("/api/posts", createPost(db)).Methods("POST")
+	router.HandleFunc("/api/posts/{id}", updatePost(db)).Methods("PUT")
+	router.HandleFunc("/api/posts/{id}", deletePost(db)).Methods("DELETE")
+	router.HandleFunc("/api/post/{id}", publishPost(db)).Methods("PUT")
+
 	router.HandleFunc("/api/posts", getPosts(db)).Methods("GET")
-	router.HandleFunc("/api/posts/{id}", getPost(db)).Methods("GET")
+	router.HandleFunc("/api/posts/{category}", getCategoryPosts(db)).Methods("GET")
+	router.HandleFunc("/api/post/{id}", getPost(db)).Methods("GET")
 
 	// wrap the router with CORS and JSON content type middlewares
 	enhancedRouter := enableCORS(jsonContentTypeMiddleware(router))
@@ -136,7 +139,8 @@ func getUser(db *sql.DB) http.HandlerFunc {
 		id := vars["id"]
 
 		var u User
-		err := db.QueryRow("SELECT id, username, email, created_at, updated_at FROM users WHERE id = $1", id).Scan(&u.Id, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+		err := db.QueryRow("SELECT id, username, email, created_at, updated_at FROM users WHERE id = $1", id).Scan(
+			&u.Id, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -160,7 +164,8 @@ func updateUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		var updatedUser User
-		err = db.QueryRow("SELECT id, username, email, created_at, updated_at FROM users WHERE id = $1", id).Scan(&u.Id, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+		err = db.QueryRow("SELECT id, username, email, created_at, updated_at FROM users WHERE id = $1", id).Scan(
+			&u.Id, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -171,11 +176,7 @@ func updateUser(db *sql.DB) http.HandlerFunc {
 // get all posts
 func getPosts(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(`SELECT p.id, p.title, p.content_type, p.author_name, p.created_at, p.updated_at, p.is_published, 
-            w.content, i.image_path, i.image_name
-            FROM posts p
-            LEFT JOIN writings w ON p.id = w.post_id
-            LEFT JOIN images i ON p.id = i.post_id`)
+		rows, err := db.Query(`SELECT id, title, content_type, created_at, category, is_published FROM posts`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -185,22 +186,53 @@ func getPosts(db *sql.DB) http.HandlerFunc {
 		var posts []Post
 		for rows.Next() {
 			var post Post
-			var content, imagePath, imageName *string
 
-			if err := rows.Scan(&post.Id, &post.Title, &post.ContentType, &post.AuthorName, &post.CreatedAt, &post.UpdatedAt, &post.IsPublished, &content, &imagePath, &imageName); err != nil {
+			if err := rows.Scan(&post.Id, &post.Title, &post.ContentType, &post.CreatedAt, &post.Category, &post.IsPublished); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-
-			post.Content = content
-			post.ImagePath = imagePath
-			post.ImageName = imageName
 			posts = append(posts, post)
 		}
 		if err := rows.Err(); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(posts)
+	}
+}
+
+// get category posts
+func getCategoryPosts(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		category := vars["category"]
+
+		rows, err := db.Query(`SELECT id, title, content_type, author_name, created_at, category, is_published FROM posts 
+		WHERE category = $1`, category)
+		if err != nil {
+			http.Error(w, "Error querying database: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var posts []Post
+
+		for rows.Next() {
+			var post Post
+			err := rows.Scan(&post.Id, &post.Title, &post.ContentType, &post.AuthorName, &post.CreatedAt, &post.Category, &post.IsPublished)
+
+			if err != nil {
+				http.Error(w, "Error scanning row: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			posts = append(posts, post)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(posts)
 	}
 }
@@ -208,26 +240,30 @@ func getPosts(db *sql.DB) http.HandlerFunc {
 // get single post
 func getPost(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
+		vars := mux.Vars(r)
+		id := vars["id"]
+
 		var p Post
-		var content, imagePath, imageName *string
 
 		err := db.QueryRow(`
-            SELECT p.id, p.title, p.content_type, p.author_name, p.created_at, p.updated_at, p.is_published, 
-            w.content, i.image_path, i.image_name
-            FROM posts p
-            LEFT JOIN writings w ON p.id = w.post_id
-            LEFT JOIN images i ON p.id = i.post_id
+            SELECT 
+                p.id, p.title, p.author_name, p.content_type, p.category, p.created_at, p.updated_at, p.is_published,
+                w.content, i.image_path, i.image_name
+            FROM posts p 
+            LEFT JOIN writings w ON p.id = w.post_id 
+            LEFT JOIN images i ON p.id = i.post_id 
             WHERE p.id = $1`, id).Scan(
-			&p.Id, &p.Title, &p.ContentType, &p.AuthorName, &p.CreatedAt, &p.UpdatedAt, &p.IsPublished, &content, &imagePath, &imageName)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			&p.Id, &p.Title, &p.AuthorName, &p.ContentType, &p.Category, &p.CreatedAt, &p.UpdatedAt, &p.IsPublished,
+			&p.Content, &p.ImagePath, &p.ImageName)
+		if err == sql.ErrNoRows {
+			http.Error(w, "Post not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "Error retrieving post: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		p.Content = content
-		p.ImagePath = imagePath
-		p.ImageName = imageName
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(p)
 	}
 }
@@ -236,33 +272,66 @@ func getPost(db *sql.DB) http.HandlerFunc {
 func createPost(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var p Post
-		json.NewDecoder(r.Body).Decode(&p)
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 
-		err := db.QueryRow(`
-			INSERT INTO posts (title, content_type, author_name, created_at, updated_at, is_published) 
-			VALUES ($1, $2, $3, NOW(), NOW(), $4) 
-			RETURNING id`,
-			p.Title, p.ContentType, p.AuthorName, true).Scan(&p.Id)
+		if p.Title == "" || p.ContentType == "" || p.AuthorName == "" || p.Category == "" {
+			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+
+		if (p.ContentType == "text" && (p.Category != "poem" && p.Category != "story")) ||
+			(p.ContentType == "image" && (p.Category != "pixel-art" && p.Category != "glitch-art" && p.Category != "digital-art" && p.Category != "photograph")) {
+			http.Error(w, "Category must be relevant with content type", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Begin()
 		if err != nil {
-			log.Fatal(err)
+			http.Error(w, "Failed to start transaction:"+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		err = tx.QueryRow(`
+		INSERT INTO posts (title, author_name, content_type, category, created_at, updated_at, is_published)
+		VALUES ($1, $2, $3, $4, NOW(), NOW(), $5) RETURNING id, created_at, updated_at`,
+			p.Title, p.AuthorName, p.ContentType, p.Category, true).Scan(&p.Id, &p.CreatedAt, &p.UpdatedAt)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Failed to create the post: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
 
 		if p.ContentType == "image" {
-			_, err := db.Exec("INSERT INTO images (post_id, image_path, image_name) VALUES ($1,$2,$3)", p.Id, p.ImagePath, p.ImageName)
-
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			if _, err := tx.Exec(
+				`INSERT INTO images (post_id, image_path, image_name) VALUES ($1, $2, $3)`, p.Id, p.ImagePath, p.ImageName); err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to insert the image: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else if p.ContentType == "text" {
-			_, err := db.Exec("INSERT INTO writings (post_id, content) VALUES ($1,$2)", p.Id, p.Content)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			if _, err := tx.Exec(`
+			INSERT INTO writings (post_id, content) VALUES ($1,$2)`, p.Id, p.Content); err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to insert the content: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
+		} else {
+			tx.Rollback()
+			http.Error(w, "Unsupported content type", http.StatusBadRequest)
+			return
 		}
 
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit the transaction: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(p)
+		w.WriteHeader(http.StatusCreated)
 	}
 }
 
@@ -277,8 +346,8 @@ func updatePost(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec("UPDATE posts SET title = $1, content_type = $2, author_name = $3, updated_at = NOW(), is_published = $4 WHERE id = $5",
-			&p.Title, &p.ContentType, &p.AuthorName, &p.IsPublished, id)
+		_, err := db.Exec("UPDATE posts SET title = $1, author_name = $2, content_type = $3, category=$4 updated_at = NOW(), is_published = $5 WHERE id = $6",
+			&p.Title, &p.AuthorName, &p.ContentType, &p.Category, &p.IsPublished, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -300,16 +369,17 @@ func updatePost(db *sql.DB) http.HandlerFunc {
 
 		var updatedPost Post
 		err = db.QueryRow(`
-			SELECT id, title, content_type, author_name, created_at, updated_at, is_published FROM posts WHERE id = $1`, id).Scan(
-			&updatedPost.Id, &updatedPost.Title, &updatedPost.ContentType, &updatedPost.AuthorName,
+			SELECT id, title, author_name, content_type, category, created_at, updated_at, is_published FROM posts WHERE id = $1`, id).Scan(
+			&updatedPost.Id, &updatedPost.Title, &updatedPost.AuthorName, &updatedPost.ContentType, &updatedPost.Category,
 			&updatedPost.CreatedAt, &updatedPost.UpdatedAt, &updatedPost.IsPublished)
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(updatedPost)
 
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(updatedPost)
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -336,26 +406,28 @@ func deletePost(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// publish the post
 func publishPost(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
-		currentTime := time.Now()
 
 		var p Post
 		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		_, err := db.Exec("UPDATE posts SET updated_at = $1, is_published = NOT is_published WHERE id = $2", currentTime, id)
+		_, err := db.Exec("UPDATE posts SET updated_at = NOW(), is_published = NOT is_published WHERE id = $1", id)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
 
 		var updatedPost Post
-		err = db.QueryRow("SELECT id, title, content_type, author_name, created_at, updated_at, is_published FROM posts WHERE id = $1", id).Scan(
-			&updatedPost.Id, &updatedPost.Title, &updatedPost.ContentType, &updatedPost.AuthorName, &updatedPost.CreatedAt, &updatedPost.UpdatedAt, &updatedPost.IsPublished, id)
+		err = db.QueryRow(`
+			SELECT id, title, author_name, content_type, category, created_at, updated_at, is_published FROM posts WHERE id = $1`, id).Scan(
+			&updatedPost.Id, &updatedPost.Title, &updatedPost.AuthorName, &updatedPost.ContentType, &updatedPost.Category,
+			&updatedPost.CreatedAt, &updatedPost.UpdatedAt, &updatedPost.IsPublished)
 
 		if err != nil {
 			log.Fatal(err)
@@ -393,7 +465,7 @@ func adminAuthMiddleware(next http.Handler) http.Handler {
 }
 
 func authMiddleware(handler http.HandlerFunc) http.Handler {
-    return adminAuthMiddleware(handler)
+	return adminAuthMiddleware(handler)
 }
 
 func adminLogin(db *sql.DB) http.HandlerFunc {
