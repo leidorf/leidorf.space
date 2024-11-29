@@ -1,21 +1,32 @@
 import Layout from "@/components/layout/Layout";
 import PageHead from "@/components/layout/PageHead";
-import { useState } from "react";
+import { Router, useRouter } from "next/router";
+import { useEffect, useState } from "react";
 
 const login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [token, setToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      router.push("./dashboard");
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
     try {
-      const response = await fetch("http:/localhost:8000/api/admin/login", {
+      const response = await fetch("http://localhost:8000/api/admin/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ username, password }),
       });
 
@@ -23,9 +34,12 @@ const login = () => {
         throw new Error("invalid credentials!");
       }
       const data = await response.json();
-      setToken(data.token);
-    } catch (error) {
-      setError(error.message);
+      localStorage.setItem("token", data.token);
+      setLoading(false);
+      router.push("./dashboard");
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
     }
   };
 
@@ -48,7 +62,7 @@ const login = () => {
                   htmlFor="username"
                   className="block"
                 >
-                  username:
+                  username
                 </label>
                 <input
                   id="username"
@@ -63,7 +77,7 @@ const login = () => {
                   htmlFor="password"
                   className="block"
                 >
-                  password:
+                  password
                 </label>
                 <input
                   id="password"
@@ -76,13 +90,13 @@ const login = () => {
                 />
               </div>
               {error && <p className="text-red-600">{error}</p>}
-              {token && <p className="text-green-600">{token}</p>}
               <div className="mt-2">
                 <button
                   type="submit"
-                  className="border border-red-600 rounded px-2"
+                  className="button-submit"
+                  disabled={loading}
                 >
-                  log in
+                  {loading ? "logging in..." : "log in"}
                 </button>
               </div>
             </form>
