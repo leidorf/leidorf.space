@@ -15,7 +15,7 @@ const Footer = () => {
                 >
                   <img
                     className="h-3.5 w-auto mr-1.5"
-                    src="images/star.png"
+                    src="/images/star.png"
                   ></img>
                   <span>leidorf</span>
                 </Link>

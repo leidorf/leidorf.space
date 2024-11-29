@@ -13,7 +13,7 @@ const Header = () => {
               >
                 <img
                   className="h-8 w-auto mr-1"
-                  src="images/star.png"
+                  src="/images/star.png"
                 ></img>
                 <span className="text-4xl text-decoration-none font-black">leidorf</span>
               </Link>
