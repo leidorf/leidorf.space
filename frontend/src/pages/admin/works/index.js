@@ -2,7 +2,23 @@ import Layout from "@/components/layout/Layout";
 import PageHead from "@/components/layout/PageHead";
 import Link from "next/link";
 
-const works = () => {
+export async function getServerSideProps() {
+  try {
+    const response = await fetch("http://goapp:8000/api/works");
+    const works = await response.json();
+
+    return {
+      props: { works },
+    };
+  } catch (error) {
+    console.error("error:", error);
+    return {
+      props: { works: [] },
+    };
+  }
+}
+
+const Works = ({ works }) => {
   return (
     <>
       <Layout>
@@ -17,6 +33,33 @@ const works = () => {
               >
                 create work!!
               </Link>
+              <div>
+                <ul>
+                  {Array.isArray(works) && works.length > 0 ? (
+                    works.map((work) => (
+                      <div
+                        key={work.id}
+                        className="my-1 w-fit"
+                      >
+                        <li>
+                          <p>
+                            {work.id} -{" "}
+                            <Link
+                              href={`./works/${work.id}`}
+                              className="red-underline"
+                            >
+                              {work.title} ({work.category})
+                            </Link>{" "}
+                            - {work.is_published ? "✅" : "❌"}
+                          </p>
+                        </li>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="my-1">no works found.</p>
+                  )}
+                </ul>
+              </div>
             </div>
             <Link
               href={`./dashboard`}
@@ -31,4 +74,4 @@ const works = () => {
   );
 };
 
-export default works;
+export default Works;

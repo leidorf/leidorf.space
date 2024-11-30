@@ -1,6 +1,7 @@
 import Layout from "@/components/layout/Layout";
 import PageHead from "@/components/layout/PageHead";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { useState } from "react";
 
 const create_work = () => {
@@ -11,6 +12,7 @@ const create_work = () => {
   const [content, setContent] = useState("");
   const [file, setFile] = useState("");
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const handleSelectChange = (e) => {
     const selectedCategory = e.target.value;
@@ -18,7 +20,7 @@ const create_work = () => {
     setError("");
 
     if (selectedCategory === "poem" || selectedCategory === "story") {
-      setContentType("writing");
+      setContentType("text");
     } else if (["digital-art", "pixel-art", "glitch-art", "photography"].includes(selectedCategory)) {
       setContentType("image");
     } else {
@@ -35,7 +37,7 @@ const create_work = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const content_type = contentType;
-    if (!title || !author || !category || (contentType === "writings" && !content) || (contentType === "image" && !file)) {
+    if (!title || !author || !category || (contentType === "text" && !content) || (contentType === "image" && !file)) {
       setError("please fill out all fields!");
       return;
     }
@@ -47,7 +49,15 @@ const create_work = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ title, author, content_type, category, content, file }),
+        body: JSON.stringify({
+          title,
+          author,
+          content_type,
+          category,
+          content: contentType === "text" ? content : null,
+          image_path: contentType === "image" ? file : null,
+          image_name: contentType === "image" ? file : null,
+        }),
       });
 
       if (!response.ok) {
@@ -57,7 +67,16 @@ const create_work = () => {
       setError(err.message);
     }
 
-    console.log("work created:", { title, author, category, contentType, content, file });
+    console.log("work created:", {
+      title,
+      author,
+      content_type,
+      category,
+      content: contentType === "text" ? content : null,
+      image_path: contentType === "image" ? file : null,
+      image_name: contentType === "image" ? file : null,
+    });
+    router.push("../works");
   };
 
   return (
@@ -109,7 +128,7 @@ const create_work = () => {
                   <option value="glitch-art">glitch-art</option>
                   <option value="photography">photography</option>
                 </select>
-                {contentType === "writing" && (
+                {contentType === "text" && (
                   <div className="mb-2">
                     <label className="block">content</label>
                     <textarea

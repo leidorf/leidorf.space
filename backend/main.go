@@ -75,7 +75,7 @@ func main() {
 			image_path VARCHAR(255) NOT NULL,
 			image_name VARCHAR(255) NOT NULL 
 		);
-		CREATE TABLE IF NOT EXISTS writings (
+		CREATE TABLE IF NOT EXISTS texts (
 			id SERIAL PRIMARY KEY,
 			work_id INTEGER REFERENCES works(id) ON DELETE CASCADE,
 			content TEXT NOT NULL 
@@ -88,20 +88,20 @@ func main() {
 
 	// create router
 	router := mux.NewRouter()
+	router.HandleFunc("/api/works", getWorks(db)).Methods("GET")
+	router.HandleFunc("/api/works/{category}", getCategoryWorks(db)).Methods("GET")
+	router.HandleFunc("/api/work/{id}", getWork(db)).Methods("GET")
+	
+	router.HandleFunc("/api/admin/login", adminLogin(db)).Methods("POST")
 	router.HandleFunc("/api/users/{id}", getUser(db)).Methods("GET")
 	router.HandleFunc("/api/users/{id}", updateUser(db)).Methods("PUT")
-	router.HandleFunc("/api/admin/login", adminLogin(db)).Methods("POST")
 	router.Handle("/api/admin/dashboard", authenticate(http.HandlerFunc(dashboardHandler))).Methods("GET")
 
 	router.HandleFunc("/api/works", createWork(db)).Methods("POST")
 	router.HandleFunc("/api/works/{id}", updateWork(db)).Methods("PUT")
 	router.HandleFunc("/api/works/{id}", deleteWork(db)).Methods("DELETE")
 	router.HandleFunc("/api/work/{id}", publishWork(db)).Methods("PUT")
-
-	router.HandleFunc("/api/works", getWorks(db)).Methods("GET")
-	router.HandleFunc("/api/works/{category}", getCategoryWorks(db)).Methods("GET")
-	router.HandleFunc("/api/work/{id}", getWork(db)).Methods("GET")
-
+	
 	// wrap the router with CORS and JSON content type middlewares
 	enhancedRouter := enableCORS(jsonContentTypeMiddleware(router))
 
@@ -112,7 +112,7 @@ func main() {
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*") // allow any origin
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		// check if the request is for cors preflight
@@ -249,9 +249,9 @@ func getWork(db *sql.DB) http.HandlerFunc {
 		err := db.QueryRow(`
             SELECT 
                 work.id, work.title, work.author, work.content_type, work.category, work.created_at, work.updated_at, work.is_published,
-                w.content, i.image_path, i.image_name
+                t.content, i.image_path, i.image_name
             FROM works work 
-            LEFT JOIN writings writing ON work.id = writing.work_id 
+            LEFT JOIN texts t ON work.id = t.work_id 
             LEFT JOIN images i ON work.id = i.work_id 
             WHERE work.id = $1`, id).Scan(
 			&work.Id, &work.Title, &work.Author, &work.ContentType, &work.Category, &work.CreatedAt, &work.UpdatedAt, &work.IsPublished,
@@ -314,7 +314,7 @@ func createWork(db *sql.DB) http.HandlerFunc {
 			}
 		} else if work.ContentType == "text" {
 			if _, err := tx.Exec(`
-			INSERT INTO writings (work_id, content) VALUES ($1,$2)`, work.Id, work.Content); err != nil {
+			INSERT INTO texts (work_id, content) VALUES ($1,$2)`, work.Id, work.Content); err != nil {
 				tx.Rollback()
 				http.Error(w, "Failed to insert the content: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -361,7 +361,7 @@ func updateWork(db *sql.DB) http.HandlerFunc {
 				return
 			}
 		} else if work.ContentType == "text" {
-			_, err := db.Exec(`UPDATE writings SET content = $1 WHERE work_id = $2`, work.Content, id)
+			_, err := db.Exec(`UPDATE texts SET content = $1 WHERE work_id = $2`, work.Content, id)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
