@@ -3,17 +3,21 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"errors"
+	"strings"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
-	"strings"
 )
 
 var secretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
@@ -30,7 +34,7 @@ type User struct {
 type Work struct {
 	Id          int       `json:"id"`
 	Title       string    `json:"title"`
-	Author  string    `json:"author"`
+	Author      string    `json:"author"`
 	ContentType string    `json:"content_type"`
 	Category    string    `json:"category"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -88,10 +92,12 @@ func main() {
 
 	// create router
 	router := mux.NewRouter()
+	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("/app/uploads"))))
+
 	router.HandleFunc("/api/works", getWorks(db)).Methods("GET")
 	router.HandleFunc("/api/works/{category}", getCategoryWorks(db)).Methods("GET")
 	router.HandleFunc("/api/work/{id}", getWork(db)).Methods("GET")
-	
+
 	router.HandleFunc("/api/admin/login", adminLogin(db)).Methods("POST")
 	router.HandleFunc("/api/users/{id}", getUser(db)).Methods("GET")
 	router.HandleFunc("/api/users/{id}", updateUser(db)).Methods("PUT")
@@ -101,7 +107,7 @@ func main() {
 	router.HandleFunc("/api/works/{id}", updateWork(db)).Methods("PUT")
 	router.HandleFunc("/api/works/{id}", deleteWork(db)).Methods("DELETE")
 	router.HandleFunc("/api/work/{id}", publishWork(db)).Methods("PUT")
-	
+
 	// wrap the router with CORS and JSON content type middlewares
 	enhancedRouter := enableCORS(jsonContentTypeMiddleware(router))
 
@@ -112,14 +118,8 @@ func main() {
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*") // allow any origin
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		// check if the request is for cors preflight
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
 
 		// pass down the request to the next middleware (or final handler)
 		next.ServeHTTP(w, r)
@@ -272,67 +272,110 @@ func getWork(db *sql.DB) http.HandlerFunc {
 // create work
 func createWork(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var work Work
-		if err := json.NewDecoder(r.Body).Decode(&work); err != nil {
-			http.Error(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		if work.Title == "" || work.ContentType == "" || work.Author == "" || work.Category == "" {
+		title := r.FormValue("title")
+		author := r.FormValue("author")
+		category := r.FormValue("category")
+		contentType := r.FormValue("content_type")
+		content := r.FormValue("content")
+
+		if title == "" || author == "" || category == "" || contentType == "" {
 			http.Error(w, "Missing required fields", http.StatusBadRequest)
 			return
 		}
 
-		if (work.ContentType == "text" && (work.Category != "poem" && work.Category != "story")) ||
-			(work.ContentType == "image" && (work.Category != "pixel-art" && work.Category != "glitch-art" && work.Category != "digital-art" && work.Category != "photograph")) {
+		if (contentType == "text" && (category != "poem" && category != "story")) ||
+			(contentType == "image" && (category != "pixel-art" && category != "glitch-art" && category != "digital-art" && category != "photography")) {
 			http.Error(w, "Category must be relevant with content type", http.StatusBadRequest)
 			return
 		}
 
 		tx, err := db.Begin()
 		if err != nil {
-			http.Error(w, "Failed to start transaction:"+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Failed to start transaction: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		var workID int
 		err = tx.QueryRow(`
-		INSERT INTO works (title, author, content_type, category, created_at, updated_at, is_published)
-		VALUES ($1, $2, $3, $4, NOW(), NOW(), $5) RETURNING id, created_at, updated_at`,
-			work.Title, work.Author, work.ContentType, work.Category, true).Scan(&work.Id, &work.CreatedAt, &work.UpdatedAt)
+			INSERT INTO works (title, author, content_type, category, created_at, updated_at, is_published)
+			VALUES ($1, $2, $3, $4, NOW(), NOW(), $5) RETURNING id`,
+			title, author, contentType, category, true).Scan(&workID)
 		if err != nil {
 			tx.Rollback()
-			http.Error(w, "Failed to create the work: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Failed to insert work: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		if work.ContentType == "image" {
-			if _, err := tx.Exec(
-				`INSERT INTO images (work_id, image_path, image_name) VALUES ($1, $2, $3)`, work.Id, work.ImagePath, work.ImageName); err != nil {
+		if contentType == "image" {
+			file, handler, err := r.FormFile("file")
+			if err != nil {
 				tx.Rollback()
-				http.Error(w, "Failed to insert the image: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Failed to read uploaded file: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-		} else if work.ContentType == "text" {
-			if _, err := tx.Exec(`
-			INSERT INTO texts (work_id, content) VALUES ($1,$2)`, work.Id, work.Content); err != nil {
+			defer file.Close()
+
+			uploadDir := "uploads"
+			if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
 				tx.Rollback()
-				http.Error(w, "Failed to insert the content: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Failed to create upload directory: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-		} else {
-			tx.Rollback()
-			http.Error(w, "Unsupported content type", http.StatusBadRequest)
-			return
+
+			ext := filepath.Ext(handler.Filename)
+			uniqueFilename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+
+			filePath := filepath.Join(uploadDir, uniqueFilename)
+			out, err := os.Create(filePath)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to save file: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer out.Close()
+			if _, err := io.Copy(out, file); err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to write file: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			_, err = tx.Exec(`INSERT INTO images (work_id, image_path, image_name) VALUES ($1, $2, $3)`,
+				workID, filePath, uniqueFilename)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to save image metadata: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if contentType == "text" {
+			_, err := tx.Exec(`INSERT INTO texts (work_id, content) VALUES ($1, $2)`, workID, content)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to save text content: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		if err := tx.Commit(); err != nil {
-			http.Error(w, "Failed to commit the transaction: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Failed to commit transaction: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(work)
 		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":           workID,
+			"title":        title,
+			"author":       author,
+			"category":     category,
+			"content_type": contentType,
+		})
 	}
 }
 
@@ -347,8 +390,8 @@ func updateWork(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec("UPDATE works SET title = $1, author = $2, content_type = $3, category=$4 updated_at = NOW(), is_published = $5 WHERE id = $6",
-			&work.Title, &work.Author, &work.ContentType, &work.Category, &work.IsPublished, id)
+		_, err := db.Exec("UPDATE works SET title = $1, author = $2, content_type = $3, category=$4, updated_at = NOW(), is_published = $5 WHERE id = $6",
+			work.Title, work.Author, work.ContentType, work.Category, work.IsPublished, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -413,14 +456,9 @@ func publishWork(db *sql.DB) http.HandlerFunc {
 		vars := mux.Vars(r)
 		id := vars["id"]
 
-		var work Work
-		if err := json.NewDecoder(r.Body).Decode(&work); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		_, err := db.Exec("UPDATE works SET updated_at = NOW(), is_published = NOT is_published WHERE id = $1", id)
 		if err != nil {
-			log.Fatal(err)
+			http.Error(w, "failed to change visibility of the work: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -431,11 +469,13 @@ func publishWork(db *sql.DB) http.HandlerFunc {
 			&updatedWork.CreatedAt, &updatedWork.UpdatedAt, &updatedWork.IsPublished)
 
 		if err != nil {
-			log.Fatal(err)
+			http.Error(w, "failed to fetch updated work: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(updatedWork)
 
-		w.WriteHeader(http.StatusOK)
 	}
 }
 

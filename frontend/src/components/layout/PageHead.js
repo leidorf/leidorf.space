@@ -6,7 +6,7 @@ const PageHead = ({ headTitle }) => {
     <>
       <Head>
         <title>{headTitle ? headTitle : "leidorf's work storage"}</title>
-        <link rel="icon" href="../../favicon.ico" />
+        <link rel="icon" href="/favicon.ico" />
       </Head>
     </>
   );

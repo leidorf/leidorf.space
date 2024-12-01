@@ -38,21 +38,6 @@ export async function deleteWork(work_id) {
   }
 }
 
-export async function publishWork(work_id) {
-  try {
-    const response = await fetch(`http://localhost:8000/api/work/${work_id}`, {
-      method: "PUT",
-    });
-    if (!response.ok) {
-      throw new Error("failed to change visibility");
-    }
-    return true;
-  } catch (error) {
-    console.error("error while changing visibility: ", error);
-    return false;
-  }
-}
-
 export default function EditWork({ work }) {
   const router = useRouter();
   const [isHovered, setIsHovered] = useState(false);
@@ -67,13 +52,19 @@ export default function EditWork({ work }) {
   };
 
   const handlePublish = async () => {
-    const success = await publishWork(work.id);
-    if (success) {
-      const response = await fetch(`http://localhost:8000/api/work/${work.id}`);
-      const updatedWork = await response.json();
-      setWork(updatedWork);
-    } else {
-      alert("failed to change visibility of the work");
+    try {
+      const response = await fetch(`http://localhost:8000/api/work/${work.id}`, {
+        method: "PUT",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to change work visibility");
+      }
+
+      router.replace(router.asPath);
+    } catch (error) {
+      console.error("Error changing work visibility:", error.message);
+      alert("Failed to change work visibility");
     }
   };
 
@@ -108,13 +99,15 @@ export default function EditWork({ work }) {
                   work {work.id} ({work.category} / {work.content_type})
                 </p>
                 <p className="font-black">{work.title}</p>
-                {work.content_type === "text" ? <p>{work.content}</p> : <img src={work.image_path} />}
+                <div className="border w-fit p-2 my-2">
+                  {work.content_type === "text" ? <p>{work.content}</p> : <img src={`http://localhost:8000/${work.image_path}`} />}
+                </div>
                 <p className="text-red-600">- {work.author}</p>
                 <p>create: {new Date(work.created_at).toUTCString()}</p>
                 <p>update: {new Date(work.updated_at).toUTCString()}</p>
                 <button
                   type="button"
-                  className="input-section"
+                  className="my-2 input-section px-2 w-36 text-nowrap"
                   onMouseEnter={() => setIsHovered(true)}
                   onMouseLeave={() => setIsHovered(false)}
                   onClick={handlePublish}
@@ -126,15 +119,24 @@ export default function EditWork({ work }) {
                     : isHovered
                     ? "publish?"
                     : "NOT published ❌"}
-                </button>{" "}
+                </button>
+                <div className="mt-2">
+                  <Link
+                    href={`/admin/works/${work.id}/update`}
+                    className="input-section !border-green-600 hover:bg-green-600 px-2 mr-2 w-16"
+                  >
+                    update
+                  </Link>
+                  <button
+                    className="rounded bg-red-700 hover:bg-red-900 w-16 px-2"
+                    type="button"
+                    onClick={handleDelete}
+                  >
+                    delete
+                  </button>
+                </div>
               </div>
-              <button
-                className="input-section block"
-                type="button"
-                onClick={handleDelete}
-              >
-                delete
-              </button>
+
               <Link
                 href="/admin/works"
                 className="red-underline"

@@ -4,8 +4,6 @@ import Footer from "./Footer";
 import PageHead from "./PageHead";
 
 const Layout = ({ children }) => {
-  const [openClass, setOpenClass] = useState("");
-
   return (
     <>
       <PageHead />

@@ -36,48 +36,49 @@ const create_work = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const content_type = contentType;
+  
     if (!title || !author || !category || (contentType === "text" && !content) || (contentType === "image" && !file)) {
-      setError("please fill out all fields!");
+      setError("Please fill out all fields!");
       return;
     }
     setError("");
-
+  
     try {
+      const formData = new FormData();
+      formData.append("title", title);
+      formData.append("author", author);
+      formData.append("category", category);
+      formData.append("content_type", contentType);
+  
+      if (contentType === "text") {
+        formData.append("content", content);
+      }
+  
+      if (contentType === "image") {
+        const fileInput = document.querySelector("#file-upload");
+        if (fileInput && fileInput.files[0]) {
+          formData.append("file", fileInput.files[0]);
+        } else {
+          setError("Please select a file for upload!");
+          return;
+        }
+      }
+  
       const response = await fetch("http://localhost:8000/api/works", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title,
-          author,
-          content_type,
-          category,
-          content: contentType === "text" ? content : null,
-          image_path: contentType === "image" ? file : null,
-          image_name: contentType === "image" ? file : null,
-        }),
+        body: formData,
       });
-
+  
       if (!response.ok) {
-        throw new Error("invalid field values!");
+        throw new Error("Invalid field values or server error!");
       }
+  
+      router.push("/admin/works");
     } catch (err) {
       setError(err.message);
     }
-
-    console.log("work created:", {
-      title,
-      author,
-      content_type,
-      category,
-      content: contentType === "text" ? content : null,
-      image_path: contentType === "image" ? file : null,
-      image_name: contentType === "image" ? file : null,
-    });
-    router.push("../works");
   };
+  
 
   return (
     <>

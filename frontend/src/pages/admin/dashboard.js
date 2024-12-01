@@ -31,8 +31,8 @@ const dashboard = () => {
         <PageHead headTitle={`dashboard`}></PageHead>
         <div className="flex justify-center">
           <div className="w-8/12">
-            <p className="text-2xl mb-4 red-underline">admin dashboard</p>
-            <div className="mb-2">
+            <p className="text-2xl mb-4 font-black red-underline">admin dashboard</p>
+            <div className="py-2">
               <ul>
                 <li>
                   <Link

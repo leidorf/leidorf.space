@@ -23,6 +23,8 @@ services:
       dockerfile: go.dockerfile
     environment:
       DATABASE_URL: ${DATABASE_URL}
+    volumes:
+      - ./uploads:/app/uploads
     ports:
       - 8000:8000
     depends_on:

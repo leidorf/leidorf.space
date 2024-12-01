@@ -26,14 +26,14 @@ const Works = ({ works }) => {
         <div className="flex justify-center">
           <div className="w-8/12">
             <div className="mb-4">
-              <p className="text-2xl">workss!!</p>
+              <p className="text-2xl mb-4 font-black red-underline">workss!!</p>
               <Link
                 href={`./works/create_work`}
-                className="red-underline"
+                className="header-item"
               >
                 create work!!
               </Link>
-              <div>
+              <div className="py-2">
                 <ul>
                   {Array.isArray(works) && works.length > 0 ? (
                     works.map((work) => (

@@ -1,5 +1,6 @@
 import Layout from "@/components/layout/Layout";
 import PageHead from "@/components/layout/PageHead";
+import { formatDate } from "@/components/utils/date";
 
 export async function getServerSideProps() {
   try {
@@ -27,21 +28,30 @@ export default function Works({ works }) {
             <div>
               <ul>
                 {Array.isArray(works) && works.length > 0 ? (
-                  works.map((work) => (
-                    <div
-                      key={work.id}
-                      className="my-1 w-fit"
-                    >
-                      <li>
-                        <p>
-                          {work.title} ({work.category}) - ({new Date(work.created_at).toLocaleDateString("en-GB")})
-                        </p>
-                      </li>
+                  works.some((work) => work.is_published) ? (
+                    works.map(
+                      (work) =>
+                        work.is_published && (
+                          <div
+                            key={work.id}
+                            className="my-1 w-fit"
+                          >
+                            <li>
+                              <p>
+                                {work.title} ({work.category}) - ({formatDate(work.created_at)})
+                              </p>
+                            </li>
+                          </div>
+                        )
+                    )
+                  ) : (
+                    <div>
+                      <p>no published work found</p>
                     </div>
-                  ))
+                  )
                 ) : (
                   <div>
-                    <p>no published work founded</p>
+                    <p>no works available</p>
                   </div>
                 )}
               </ul>
