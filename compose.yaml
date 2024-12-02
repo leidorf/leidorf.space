@@ -24,7 +24,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
     volumes:
-      - ./uploads:/app/uploads
+      - ./frontend/public/works:/frontend/public/works
     ports:
       - 8000:8000
     depends_on:

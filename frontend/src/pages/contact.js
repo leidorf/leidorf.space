@@ -2,7 +2,7 @@ import Layout from "@/components/layout/Layout";
 import PageHead from "@/components/layout/PageHead";
 import Link from "next/link";
 
-const contact = () => {
+const Contact = () => {
   return (
     <>
       <Layout>
@@ -11,7 +11,7 @@ const contact = () => {
         <div className="flex justify-center">
           <div className="w-8/12">
             <div className="mb-4">
-              <p className="red-underline text-xl font-black">contact</p>
+              <p className="red-underline text-3xl font-black">contact</p>
             </div>
             <div>
               <ul>
@@ -40,4 +40,4 @@ const contact = () => {
   );
 };
 
-export default contact;
+export default Contact;

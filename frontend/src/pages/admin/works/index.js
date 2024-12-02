@@ -1,6 +1,8 @@
 import Layout from "@/components/layout/Layout";
 import PageHead from "@/components/layout/PageHead";
+import withAuth from "@/components/utils/withAuth";
 import Link from "next/link";
+import { useEffect } from "react";
 
 export async function getServerSideProps() {
   try {
@@ -26,7 +28,7 @@ const Works = ({ works }) => {
         <div className="flex justify-center">
           <div className="w-8/12">
             <div className="mb-4">
-              <p className="text-2xl mb-4 font-black red-underline">workss!!</p>
+              <p className="text-3xl mb-4 font-black red-underline">workss!!</p>
               <Link
                 href={`./works/create_work`}
                 className="header-item"
@@ -73,5 +75,4 @@ const Works = ({ works }) => {
     </>
   );
 };
-
-export default Works;
+export default withAuth(Works);

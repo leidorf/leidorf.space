@@ -3,7 +3,7 @@ import PageHead from "@/components/layout/PageHead";
 import { Router, useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
-const login = () => {
+const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -54,7 +54,7 @@ const login = () => {
                 src="/images/star.png"
                 className="h-16 w-auto"
               />
-              <p className="text-2xl font-black red-underline">log in</p>
+              <p className="text-3xl font-black red-underline">log in</p>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="mb-2">
@@ -107,4 +107,4 @@ const login = () => {
   );
 };
 
-export default login;
+export default Login;
